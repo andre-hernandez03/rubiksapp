@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_cube/flutter_cube.dart';
+
 //import 'package:rubiks/camera_page.dart';
 //import 'package:rubiks/camera_page.dart';
 
@@ -71,7 +73,8 @@ class RubiksCubeModel extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) =>
-                          RubiksCubeImage(cubeLayouts: cubeLayouts),
+                          //RubiksCubeImage(cubeLayouts: cubeLayouts),
+                          RubiksCube(cubeLayouts: cubeLayouts)
                     ),
                   );
                 },
@@ -427,7 +430,7 @@ class _RubiksCubeImageState extends State<RubiksCubeImage> {
 class RubiksCubeImage extends StatefulWidget {
   final Map<String, List<List<String>>> cubeLayouts;
 
-  RubiksCubeImage({required this.cubeLayouts});
+  const RubiksCubeImage({super.key, required this.cubeLayouts});
 
   @override
   _RubiksCubeImageState createState() => _RubiksCubeImageState();
@@ -619,6 +622,186 @@ class _RubiksCubeImageState extends State<RubiksCubeImage> {
           style:ElevatedButton.styleFrom(backgroundColor: Colors.blue), 
           child: const Text('Scramble',style: TextStyle(color:Colors.white))),
         ],
+      ),
+    );
+  }
+}
+
+class RubiksCube extends StatefulWidget {
+    final Map<String, List<List<String>>> cubeLayouts;
+
+    const RubiksCube({super.key, required this.cubeLayouts});
+
+  @override
+  _RubiksCubeState createState() => _RubiksCubeState();
+}
+
+class _RubiksCubeState extends State<RubiksCube> {
+  late Object cube;
+  late Map<String, List<List<String>>> cubeLayouts;
+
+
+  @override
+  void initState() {
+    super.initState();
+
+        // Colors for each face (9 squares per face)
+      List<List<Color>> faceColors = [
+      List.filled(9, Colors.orange),    // Front face
+      List.filled(9, Colors.red),   // Back face
+      List.filled(9, Colors.blue),  // Left face
+      List.filled(9, Colors.green),     // Right face
+      List.filled(9, Colors.yellow),   // Top face
+      List.filled(9, Colors.white),  // Bottom face
+    ];
+
+    cubeLayouts = Map.from(widget.cubeLayouts);
+    
+    Map<String, Color> colorMapping = {
+      "white": Colors.white,
+      "red": Colors.red,
+      "blue": Colors.blue,
+      "green": Colors.green,
+      "orange": Colors.orange,
+      "yellow": Colors.yellow,
+    };
+
+      Map<String, List<Color>> convertCubeColors(Map<String, List<List<String>>> cube) {
+      return cube.map((key, value) => MapEntry(
+          key,
+          value.expand((row) => row.map((color) => colorMapping[color] ?? Colors.black)).toList(),
+        ));
+  }
+
+    Map<String, List<Color>> cubeLayoutColor = convertCubeColors(cubeLayouts);
+
+    //print(cubeLayoutColor);
+    faceColors[0] = cubeLayoutColor["orange"]!;
+    faceColors[1] = cubeLayoutColor["red"]!;
+    faceColors[2] = cubeLayoutColor["blue"]!;
+    faceColors[3] = cubeLayoutColor["green"]!;
+    faceColors[4] = cubeLayoutColor["yellow"]!;
+    faceColors[5] = cubeLayoutColor["white"]!;
+
+    // Create the 3D Cube object
+    cube = Object(
+      name: "cube",
+      scale: Vector3(3, 3, 3),
+      backfaceCulling: false, // Ensures visibility of all faces
+      children: [
+        // Customize each face with colors from the dictionary
+        createFace('Front', faceColors[0], Vector3(0,0,0.5),Vector3.zero()),
+        createFace('Back', faceColors[1],Vector3(0,0,-0.5),Vector3(0,180,0)),
+        createFace('Left', faceColors[2], Vector3(0.5,0,0), Vector3(0,90,0)),
+        createFace('Right', faceColors[3], Vector3(-0.5,0,0), Vector3(0,-90,0)),
+        createFace('Top', faceColors[4], Vector3(0,0.5,0), Vector3(-90,0,180)),
+        createFace('Bottom', faceColors[5], Vector3(0,-0.5,0),Vector3(90, 0, -180)),
+      ],
+    );
+  }
+
+Object createFace(
+      String name, List<Color> colors, Vector3 position, Vector3 rotation) {
+    final List<Object> squares = [];
+    const double squareSize = 1.0 / 3.0;
+    const double borderThickness = 0.01; // Border thickness
+    const double borderOffset =
+        0.004; // Raise borders slightly above the squares
+    int colorIndex = 0; // Track color assignment
+
+    for (int row = 0; row < 3; row++) {
+      for (int col = 0; col < 3; col++) {
+        final double xOffset = (col - 1) * squareSize;
+        final double yOffset = (1 - row) * squareSize;
+
+        // **Main Colored Square**
+        Object coloredSquare = Object(
+          name: "$name-$row-$col",
+          position: Vector3(xOffset, yOffset, 0),
+          mesh: Mesh(
+            vertices: [
+              Vector3(-squareSize / 2, squareSize / 2, 0), // Top-left
+              Vector3(squareSize / 2, squareSize / 2, 0), // Top-right
+              Vector3(squareSize / 2, -squareSize / 2, 0), // Bottom-right
+              Vector3(-squareSize / 2, -squareSize / 2, 0), // Bottom-left
+            ],
+            indices: [
+              Polygon(0, 2, 1),
+              Polygon(0, 3, 2),
+            ],
+            colors:
+                List.filled(4, colors[colorIndex++]), // Assign colors correctly
+          ),
+        );
+
+        squares.add(coloredSquare);
+
+        // **Add 4 Border Rectangles to Surround the Square**
+        squares.addAll(_createSquareBorders(
+            xOffset, yOffset, squareSize, borderThickness, borderOffset));
+      }
+    }
+
+    return Object(
+      name: name,
+      position: position,
+      rotation: rotation,
+      backfaceCulling: false,
+      children: squares,
+    );
+  }
+
+  /// **Creates 4 separate thin border rectangles for a square**
+  List<Object> _createSquareBorders(
+      double x, double y, double size, double thickness, double offset) {
+    return [
+      _createBorder(
+          "$x-$y-top", x, y + size / 2, size, thickness, offset), // Top border
+      _createBorder("$x-$y-bottom", x, y - size / 2, size, thickness,
+          offset), // Bottom border
+      _createBorder("$x-$y-left", x - size / 2, y, thickness, size,
+          offset), // Left border
+      _createBorder("$x-$y-right", x + size / 2, y, thickness, size,
+          offset), // Right border
+    ];
+  }
+
+  /// **Creates a single thin rectangle as a border piece**
+  Object _createBorder(String name, double x, double y, double width,
+      double height, double offset) {
+    return Object(
+        name: name,
+        position: Vector3(x, y, offset), // Push slightly forward
+        mesh: Mesh(
+          vertices: [
+            Vector3(-width / 2, height / 2, 0),
+            Vector3(width / 2, height / 2, 0),
+            Vector3(width / 2, -height / 2, 0),
+            Vector3(-width / 2, -height / 2, 0),
+          ],
+          indices: [
+            Polygon(0, 1, 2), Polygon(0, 2, 3), // Render as a rectangle
+          ],
+          colors: List.filled(4, Colors.black), // Black border color
+        ),
+        backfaceCulling: false);
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Rubik's Cube 3D"),
+        backgroundColor: Colors.blue,
+      ),
+      body: Center(
+        child: Cube(
+          interactive: true, // Enables rotation with gestures
+          onSceneCreated: (Scene scene) {
+            scene.world.add(cube);
+          },
+        ),
       ),
     );
   }
